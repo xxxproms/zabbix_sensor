@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Arduino / сборка
+build/
+*.hex
+*.eep
+*.elf
+*.bin
+
+# Локальные секреты (если появятся)
+secrets.h
+**/secrets.h

@@ -10,16 +10,18 @@
 #include <UIPEthernet.h>
 #include <DallasTemperature.h>
 
-// Уникальный MAC в вашей L2-сети.
+// Уникальный MAC на каждой плате в L2 (не дублируйте на разных Ардуино).
 static byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
 
-// Раскомментируйте для статического IP (иначе — поведение UIPEthernet по умолчанию, часто DHCP).
-// #define USE_STATIC_IP 1
+// Сеть 10.10.0.0/23: маска 255.255.254.0, допустимые хосты 10.10.0.30–10.10.1.254.
+// На каждое устройство — свой ip и свой mac[].
+// Закомментируйте USE_STATIC_IP, если нужен только DHCP.
+#define USE_STATIC_IP 1
 #if defined(USE_STATIC_IP) && USE_STATIC_IP
-static IPAddress ip(192, 168, 0, 50);
-static IPAddress dnsServer(192, 168, 0, 1);
-static IPAddress gateway(192, 168, 0, 1);
-static IPAddress subnet(255, 255, 255, 0);
+static IPAddress ip(10, 10, 0, 50);
+static IPAddress dnsServer(10, 10, 0, 1);
+static IPAddress gateway(10, 10, 0, 1);
+static IPAddress subnet(255, 255, 254, 0);
 #endif
 
 #define ZBX_AGENT_PORT       10050

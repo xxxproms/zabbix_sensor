@@ -54,8 +54,6 @@ flowchart TB
 
 ## 3. Один DS18B20 — соединения (ASCII)
 
-Иллюстрации с фото и примером на макетной плате: [MONTAZH_I_PAYKA_DS18B20.md](MONTAZH_I_PAYKA_DS18B20.md) (**рис. 4** — не забудьте **D4** по нашей прошивке).
-
 ```
         Arduino Uno/Nano
         +-----+

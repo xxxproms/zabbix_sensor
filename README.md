@@ -18,6 +18,8 @@
 
 Подробнее по ключам, элементам данных и проверке протокола — **[firmware/ZABBIX.md](firmware/ZABBIX.md)**.
 
+**Пайка и распайка DS18B20 (пины, BOM, типичные ошибки):** **[firmware/MONTAZH_I_PAYKA_DS18B20.md](firmware/MONTAZH_I_PAYKA_DS18B20.md)**.
+
 ---
 
 ## Аппаратная часть

@@ -3,6 +3,7 @@
  *
  * Ключи и настройка в Zabbix: ../ZABBIX.md
  * Смещение ключа во входящем кадре — ZBX_PAYLOAD_OFFSET (сверка с дампом): ../ZABBIX.md
+ * Пайка DS18B20, пины, комплектующие: ../MONTAZH_I_PAYKA_DS18B20.md
  */
 
 #include <string.h>

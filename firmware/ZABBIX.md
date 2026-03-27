@@ -2,7 +2,7 @@
 
 Документ и прошивка согласованы с пассивным протоколом **Zabbix agent** на **Zabbix 7.4.8** (server/proxy опрашивает устройство на порту **10050**). Для других версий 7.x обычно достаточно тех же настроек элемента; при сбоях сверьте дамп TCP (ниже).
 
-Прошивка: [zabbix_ds18b20/zabbix_ds18b20.ino](zabbix_ds18b20/zabbix_ds18b20.ino) (порт **10050**).
+Прошивка: [zabbix_ds18b20/zabbix_ds18b20.ino](zabbix_ds18b20/zabbix_ds18b20.ino) (порт **10050**). Монтаж датчиков: [MONTAZH_I_PAYKA_DS18B20.md](MONTAZH_I_PAYKA_DS18B20.md).
 
 ## Ключи (Zabbix agent / passive checks)
 

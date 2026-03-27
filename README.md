@@ -13,7 +13,8 @@
 | [firmware/OBSHIY_BOM.md](firmware/OBSHIY_BOM.md) | Общий список комплектующих на одно устройство |
 | [firmware/SCHEMA_I_SOEDINENIYA.md](firmware/SCHEMA_I_SOEDINENIYA.md) | Блок-схемы (Mermaid), ASCII-схемы 1-Wire и ENC28J60 |
 | [firmware/MONTAZH_ENC28J60.md](firmware/MONTAZH_ENC28J60.md) | Подключение Ethernet-модуля, питание 3.3 В, таблица пинов |
-| [firmware/MONTAZH_I_PAYKA_DS18B20.md](firmware/MONTAZH_I_PAYKA_DS18B20.md) | Пайка DS18B20, BOM, типичные ошибки |
+| [firmware/MONTAZH_I_PAYKA_DS18B20.md](firmware/MONTAZH_I_PAYKA_DS18B20.md) | Пайка DS18B20, BOM, типичные ошибки, **иллюстрации (Commons)** |
+| [firmware/IMAGES_SOURCES.md](firmware/IMAGES_SOURCES.md) | Ссылки и лицензии на картинки из инструкции по пайке |
 | [firmware/NASTR_AYKA_I_OTLADKA.md](firmware/NASTR_AYKA_I_OTLADKA.md) | Настройка IDE, ROM датчиков, Zabbix, отладка |
 | [firmware/ZABBIX.md](firmware/ZABBIX.md) | Ключи агента, элементы данных, протокол TCP |
 | [firmware/ds18b20_scan/](firmware/ds18b20_scan/) | Вспомогательный скетч для чтения адресов DS18B20 |

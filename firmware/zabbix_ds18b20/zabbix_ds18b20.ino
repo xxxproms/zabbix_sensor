@@ -5,15 +5,10 @@
  * Смещение ключа во входящем кадре — ZBX_PAYLOAD_OFFSET (сверка с дампом): ../ZABBIX.md
  * Пайка DS18B20, пины, комплектующие: ../MONTAZH_I_PAYKA_DS18B20.md
  * Схемы, BOM, ENC28J60, настройка: ../SCHEMA_I_SOEDINENIYA.md, ../OBSHIY_BOM.md, ../MONTAZH_ENC28J60.md, ../NASTR_AYKA_I_OTLADKA.md
- * Имя в сети (DHCP, DNS, hosts): ../IMYA_V_SETI.md
  */
 
 #include <string.h>
 #include <OneWire.h>
-
-// Имя для DHCP (опция 12): раскомментируйте ПОСЛЕ правки UIPEthernet/Dhcp.h — см. ../IMYA_V_SETI.md и patches/UIPEthernet-Dhcp-hostname-guard.patch
-// #define HOST_NAME "zbx-temp-01"
-
 #include <UIPEthernet.h>
 #include <DallasTemperature.h>
 
@@ -37,9 +32,6 @@ static IPAddress subnet(255, 255, 254, 0);
 #define ZBX_RX_BUF_SZ        160
 
 #define DS18B20_PIN          4
-
-// Подпись в Serial при отладке (не задаёт DNS в LAN). Смените на своё имя платы.
-#define DEVICE_LABEL "zabbix-sensor-01"
 
 OneWire oneWire(DS18B20_PIN);
 DallasTemperature sensors(&oneWire);
@@ -135,10 +127,6 @@ void setup() {
   sensors.setResolution(kDsResolution);
 
   Serial.begin(9600);
-  Serial.print(F("Device: "));
-  Serial.println(DEVICE_LABEL);
-  Serial.print(F("IP: "));
-  Serial.println(Ethernet.localIP());
   Serial.print(F("DS18B20 count: "));
   Serial.println(sensors.getDeviceCount(), DEC);
 }

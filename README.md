@@ -16,9 +16,7 @@
 | [firmware/MONTAZH_I_PAYKA_DS18B20.md](firmware/MONTAZH_I_PAYKA_DS18B20.md) | Пайка DS18B20, BOM, типичные ошибки |
 | [firmware/NASTR_AYKA_I_OTLADKA.md](firmware/NASTR_AYKA_I_OTLADKA.md) | Настройка IDE, ROM датчиков, Zabbix, отладка |
 | [firmware/ZABBIX.md](firmware/ZABBIX.md) | Ключи агента, элементы данных, протокол TCP |
-| [firmware/IMYA_V_SETI.md](firmware/IMYA_V_SETI.md) | Имя устройства в сети (DHCP hostname, DNS, hosts, Zabbix) |
 | [firmware/ds18b20_scan/](firmware/ds18b20_scan/) | Вспомогательный скетч для чтения адресов DS18B20 |
-| [patches/UIPEthernet-Dhcp-hostname-guard.patch](patches/UIPEthernet-Dhcp-hostname-guard.patch) | Патч к `Dhcp.h` для своего `HOST_NAME` в DHCP |
 
 ---
 

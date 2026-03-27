@@ -72,11 +72,7 @@
 
 ## Интеграция с Zabbix
 
-Краткая инструкция и разбор кадра — в **[firmware/ZABBIX.md](firmware/ZABBIX.md)**:
-
-- создание хоста с интерфейсом Agent (IP Arduino, порт **10050**);
-- тип элемента **Zabbix agent**, ключи `env.temp` и т.д.;
-- **tcpdump** для сверки заголовка и смещения ключа (`ZBX_HEADER_LEN` / `ZBX_PAYLOAD_OFFSET` при необходимости).
+Полная пошаговая инструкция для **Zabbix 7.4.x** (хост, группа, интерфейс Agent, элементы данных, прокси, проверка `zabbix_get`, **Last data**) и технический разбор протокола — в **[firmware/ZABBIX.md](firmware/ZABBIX.md)**.
 
 ---
 

@@ -6,6 +6,18 @@
 
 **Проверка на стороне сервера:** Zabbix **7.4.8** (пассивный опрос по тому же протоколу, что у Zabbix agent; см. [firmware/ZABBIX.md](firmware/ZABBIX.md)).
 
+### Документация проекта (карта)
+
+| Документ | Содержание |
+|----------|------------|
+| [firmware/OBSHIY_BOM.md](firmware/OBSHIY_BOM.md) | Общий список комплектующих на одно устройство |
+| [firmware/SCHEMA_I_SOEDINENIYA.md](firmware/SCHEMA_I_SOEDINENIYA.md) | Блок-схемы (Mermaid), ASCII-схемы 1-Wire и ENC28J60 |
+| [firmware/MONTAZH_ENC28J60.md](firmware/MONTAZH_ENC28J60.md) | Подключение Ethernet-модуля, питание 3.3 В, таблица пинов |
+| [firmware/MONTAZH_I_PAYKA_DS18B20.md](firmware/MONTAZH_I_PAYKA_DS18B20.md) | Пайка DS18B20, BOM, типичные ошибки |
+| [firmware/NASTR_AYKA_I_OTLADKA.md](firmware/NASTR_AYKA_I_OTLADKA.md) | Настройка IDE, ROM датчиков, Zabbix, отладка |
+| [firmware/ZABBIX.md](firmware/ZABBIX.md) | Ключи агента, элементы данных, протокол TCP |
+| [firmware/ds18b20_scan/](firmware/ds18b20_scan/) | Вспомогательный скетч для чтения адресов DS18B20 |
+
 ---
 
 ## Возможности
@@ -37,11 +49,12 @@
 
 ## Программная часть (Arduino IDE / Arduino CLI)
 
-### Расположение скетча
+### Расположение скетчей
 
-- [firmware/zabbix_ds18b20/zabbix_ds18b20.ino](firmware/zabbix_ds18b20/zabbix_ds18b20.ino)
+- Основной проект: [firmware/zabbix_ds18b20/zabbix_ds18b20.ino](firmware/zabbix_ds18b20/zabbix_ds18b20.ino)
+- Поиск адресов DS18B20: [firmware/ds18b20_scan/ds18b20_scan.ino](firmware/ds18b20_scan/ds18b20_scan.ino)
 
-Откройте папку `zabbix_ds18b20` как скетч в Arduino IDE (имя папки должно совпадать с именем `.ino`).
+Откройте папку со скетчем в Arduino IDE (имя папки должно совпадать с именем `.ino`).
 
 ### Зависимости (менеджер библиотек)
 

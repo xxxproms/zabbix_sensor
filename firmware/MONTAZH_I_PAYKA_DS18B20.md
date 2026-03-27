@@ -122,5 +122,9 @@
 
 ## 8. Связанные документы
 
+- Схемы и блок-схемы: [SCHEMA_I_SOEDINENIYA.md](SCHEMA_I_SOEDINENIYA.md)
+- Общий BOM: [OBSHIY_BOM.md](OBSHIY_BOM.md)
+- Ethernet ENC28J60: [MONTAZH_ENC28J60.md](MONTAZH_ENC28J60.md)
+- Настройка и отладка: [NASTR_AYKA_I_OTLADKA.md](NASTR_AYKA_I_OTLADKA.md)
 - Настройка Zabbix и ключи: [ZABBIX.md](ZABBIX.md)
 - Общее описание проекта: [../README.md](../README.md)

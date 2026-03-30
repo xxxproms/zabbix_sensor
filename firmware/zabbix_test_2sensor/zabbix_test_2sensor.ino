@@ -1,9 +1,9 @@
 /*
  * Тестовая плата: Zabbix agent (10050) + 2x DS18B20.
- * ROM сняты сканером; сеть задана под отдельную Ардуино.
+ * Сеть: DHCP (Ethernet.begin(mac)). В Zabbix укажите IP из Serial или резерв на роутере по MAC.
+ * ROM сняты сканером.
  *
  * Ключи: agent.ping, env.temp (сенсор 0), env.temp1 (сенсор 1).
- * env.temp2 / env.temp3 — ZBX_NOTSUPPORTED (датчиков нет).
  *
  * Документация проекта: ../ZABBIX.md, ../NASTR_AYKA_I_OTLADKA.md
  */
@@ -15,15 +15,6 @@
 
 // Уникальный MAC этой тестовой платы (не дублируйте с другими устройствами в L2).
 static byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xEE};
-
-#define USE_STATIC_IP 1
-#if defined(USE_STATIC_IP) && USE_STATIC_IP
-static IPAddress ip(10, 10, 1, 50);
-// UIPEthernet передаёт в Ethernet.begin один DNS; второй резервный — 192.168.16.4 (только для справки в сети).
-static IPAddress dnsServer(192, 168, 16, 3);
-static IPAddress gateway(10, 10, 0, 1);
-static IPAddress subnet(255, 255, 254, 0);
-#endif
 
 #define ZBX_AGENT_PORT       10050
 #define ZBX_HEADER_LEN       13
@@ -107,11 +98,14 @@ static void handleRequest(EthernetClient &client, char *rxBuf, size_t payloadLen
 
 void setup() {
   delay(500);
-#if defined(USE_STATIC_IP) && USE_STATIC_IP
-  Ethernet.begin(mac, ip, dnsServer, gateway, subnet);
-#else
-  Ethernet.begin(mac);
-#endif
+  if (Ethernet.begin(mac) == 0) {
+    Serial.begin(9600);
+    Serial.println(F("DHCP failed, check cable/router"));
+    while (true) {
+      delay(1000);
+    }
+  }
+
   server.begin();
 
   sensors.begin();
@@ -119,13 +113,20 @@ void setup() {
   sensors.setResolution(kDsResolution);
 
   Serial.begin(9600);
-  Serial.print(F("TEST 2x DS18B20 | IP: "));
+  Serial.println(F("TEST 2x DS18B20 | DHCP OK"));
+  Serial.print(F("IP:  "));
   Serial.println(Ethernet.localIP());
+  Serial.print(F("GW:  "));
+  Serial.println(Ethernet.gatewayIP());
+  Serial.print(F("DNS: "));
+  Serial.println(Ethernet.dnsServerIP());
   Serial.print(F("DS18B20 count: "));
   Serial.println(sensors.getDeviceCount(), DEC);
 }
 
 void loop() {
+  (void)Ethernet.maintain();
+
   static char rxBuf[ZBX_RX_BUF_SZ];
   EthernetClient client = server.available();
   if (!client) {

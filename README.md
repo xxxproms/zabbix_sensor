@@ -52,7 +52,7 @@
 ### Расположение скетчей
 
 - Основной проект: [firmware/zabbix_ds18b20/zabbix_ds18b20.ino](firmware/zabbix_ds18b20/zabbix_ds18b20.ino)
-- Тестовая плата (2 датчика, IP **10.10.1.50**): [firmware/zabbix_test_2sensor/zabbix_test_2sensor.ino](firmware/zabbix_test_2sensor/zabbix_test_2sensor.ino)
+- Тестовая плата (2 датчика, **DHCP**): [firmware/zabbix_test_2sensor/zabbix_test_2sensor.ino](firmware/zabbix_test_2sensor/zabbix_test_2sensor.ino)
 - Поиск адресов DS18B20: [firmware/ds18b20_scan/ds18b20_scan.ino](firmware/ds18b20_scan/ds18b20_scan.ino)
 
 Откройте папку со скетчем в Arduino IDE (имя папки должно совпадать с именем `.ino`).

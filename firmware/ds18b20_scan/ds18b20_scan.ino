@@ -2,6 +2,10 @@
  * Вспомогательный скетч: вывод ROM-адресов всех DS18B20 на шине 1-Wire.
  * Пин данных должен совпадать с основным проектом (D4).
  *
+ * Сеть (Ethernet) здесь не используется — IP в мониторе не появится.
+ * Адрес по DHCP/статика смотрите в zabbix_ds18b20.ino или zabbix_test_2sensor.ino
+ * (ENC28J60 подключён, кабель в сеть).
+ *
  * После запуска откройте Serial Monitor (9600), скопируйте строки в
  * DeviceAddress tempSensor1 ... tempSensor4 в zabbix_ds18b20.ino
  */
@@ -44,6 +48,9 @@ void setup() {
     }
   }
   Serial.println(F("--- end ---"));
+  Serial.println();
+  Serial.println(F("IP здесь не показывается: этот скетч без Ethernet."));
+  Serial.println(F("Залейте zabbix_test_2sensor или zabbix_ds18b20 — там в мониторе будет IP/GW/DNS."));
 }
 
 void loop() {

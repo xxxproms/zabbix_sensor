@@ -98,9 +98,11 @@ static void handleRequest(EthernetClient &client, char *rxBuf, size_t payloadLen
 
 void setup() {
   delay(500);
+  Serial.begin(9600);
+  Serial.println(F("TEST 2x DS18B20, DHCP..."));
+
   if (Ethernet.begin(mac) == 0) {
-    Serial.begin(9600);
-    Serial.println(F("DHCP failed, check cable/router"));
+    Serial.println(F("DHCP failed — проверьте кабель и роутер"));
     while (true) {
       delay(1000);
     }
@@ -112,13 +114,14 @@ void setup() {
   sensors.setWaitForConversion(true);
   sensors.setResolution(kDsResolution);
 
-  Serial.begin(9600);
-  Serial.println(F("TEST 2x DS18B20 | DHCP OK"));
-  Serial.print(F("IP:  "));
+  Serial.println(F("DHCP OK, сеть:"));
+  Serial.print(F("  IP:   "));
   Serial.println(Ethernet.localIP());
-  Serial.print(F("GW:  "));
+  Serial.print(F("  Mask: "));
+  Serial.println(Ethernet.subnetMask());
+  Serial.print(F("  GW:   "));
   Serial.println(Ethernet.gatewayIP());
-  Serial.print(F("DNS: "));
+  Serial.print(F("  DNS:  "));
   Serial.println(Ethernet.dnsServerIP());
   Serial.print(F("DS18B20 count: "));
   Serial.println(sensors.getDeviceCount(), DEC);

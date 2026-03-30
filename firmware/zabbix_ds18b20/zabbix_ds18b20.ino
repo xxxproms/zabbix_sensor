@@ -127,6 +127,19 @@ void setup() {
   sensors.setResolution(kDsResolution);
 
   Serial.begin(9600);
+#if defined(USE_STATIC_IP) && USE_STATIC_IP
+  Serial.println(F("Сеть: статический IP"));
+#else
+  Serial.println(F("Сеть: DHCP"));
+#endif
+  Serial.print(F("  IP:   "));
+  Serial.println(Ethernet.localIP());
+  Serial.print(F("  Mask: "));
+  Serial.println(Ethernet.subnetMask());
+  Serial.print(F("  GW:   "));
+  Serial.println(Ethernet.gatewayIP());
+  Serial.print(F("  DNS:  "));
+  Serial.println(Ethernet.dnsServerIP());
   Serial.print(F("DS18B20 count: "));
   Serial.println(sensors.getDeviceCount(), DEC);
 }

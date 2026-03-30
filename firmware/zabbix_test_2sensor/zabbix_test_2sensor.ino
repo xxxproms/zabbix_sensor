@@ -18,7 +18,7 @@ static byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xEE};
 
 #define USE_STATIC_IP 1
 #if defined(USE_STATIC_IP) && USE_STATIC_IP
-static IPAddress ip(10, 10, 0, 10);
+static IPAddress ip(10, 10, 1, 50);
 // UIPEthernet передаёт в Ethernet.begin один DNS; второй резервный — 192.168.16.4 (только для справки в сети).
 static IPAddress dnsServer(192, 168, 16, 3);
 static IPAddress gateway(10, 10, 0, 1);

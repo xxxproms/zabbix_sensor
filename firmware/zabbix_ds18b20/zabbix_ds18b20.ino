@@ -31,6 +31,8 @@ static IPAddress subnet(255, 255, 254, 0);
 #define ZBX_PAYLOAD_OFFSET   ZBX_HEADER_LEN
 #define ZBX_RX_BUF_SZ        160
 
+#define CLIENT_TIMEOUT_MS    3000
+
 #define DS18B20_PIN          4
 
 OneWire oneWire(DS18B20_PIN);
@@ -40,10 +42,10 @@ EthernetServer server(ZBX_AGENT_PORT);
 // 9..12 бит; библиотека выдержит время преобразования при setWaitForConversion(true).
 static const uint8_t kDsResolution = 10;
 
-DeviceAddress tempSensor1 = {0x28, 0x2C, 0x68, 0x58, 0xD4, 0xE1, 0x3C, 0x15};
-DeviceAddress tempSensor2 = {0x28, 0xCB, 0x04, 0x43, 0xD4, 0xE1, 0x3C, 0x25};
-DeviceAddress tempSensor3 = {0x28, 0x97, 0x95, 0x43, 0xD4, 0xE1, 0x3C, 0x0C};
-DeviceAddress tempSensor4 = {0x28, 0xB7, 0x7A, 0x43, 0xD4, 0xE1, 0x3C, 0x0F};
+// ROM-адреса ваших DS18B20 (получены сканером ds18b20_scan).
+// Если датчиков другие — перезалейте ds18b20_scan и скопируйте ROM сюда.
+DeviceAddress tempSensor1 = {0x28, 0x61, 0xE7, 0x58, 0xD4, 0xE1, 0x3C, 0x8E};
+DeviceAddress tempSensor2 = {0x28, 0xB7, 0x2A, 0x58, 0xD4, 0xE1, 0x3C, 0x36};
 
 static void writeLeU64(EthernetClient &client, uint64_t v) {
   uint8_t b[8];
@@ -104,10 +106,6 @@ static void handleRequest(EthernetClient &client, char *rxBuf, size_t payloadLen
     readTemperature(client, tempSensor1);
   } else if (strcmp(key, "env.temp1") == 0) {
     readTemperature(client, tempSensor2);
-  } else if (strcmp(key, "env.temp2") == 0) {
-    readTemperature(client, tempSensor3);
-  } else if (strcmp(key, "env.temp3") == 0) {
-    readTemperature(client, tempSensor4);
   } else {
     sendZbxNotSupported(client);
   }
@@ -115,10 +113,18 @@ static void handleRequest(EthernetClient &client, char *rxBuf, size_t payloadLen
 
 void setup() {
   delay(500);
+  Serial.begin(9600);
+  Serial.println(F("Zabbix DS18B20 agent, init..."));
+
 #if defined(USE_STATIC_IP) && USE_STATIC_IP
+  Serial.println(F("Ethernet: static IP..."));
   Ethernet.begin(mac, ip, dnsServer, gateway, subnet);
 #else
-  Ethernet.begin(mac);
+  Serial.println(F("Ethernet: DHCP..."));
+  if (Ethernet.begin(mac) == 0) {
+    Serial.println(F("DHCP FAILED — проверьте кабель и роутер"));
+    while (true) { delay(1000); }
+  }
 #endif
   server.begin();
 
@@ -126,12 +132,6 @@ void setup() {
   sensors.setWaitForConversion(true);
   sensors.setResolution(kDsResolution);
 
-  Serial.begin(9600);
-#if defined(USE_STATIC_IP) && USE_STATIC_IP
-  Serial.println(F("Сеть: статический IP"));
-#else
-  Serial.println(F("Сеть: DHCP"));
-#endif
   Serial.print(F("  IP:   "));
   Serial.println(Ethernet.localIP());
   Serial.print(F("  Mask: "));
@@ -142,6 +142,7 @@ void setup() {
   Serial.println(Ethernet.dnsServerIP());
   Serial.print(F("DS18B20 count: "));
   Serial.println(sensors.getDeviceCount(), DEC);
+  Serial.println(F("Ready."));
 }
 
 void loop() {
@@ -153,9 +154,14 @@ void loop() {
 
   size_t n = 0;
   bool oversize = false;
+  unsigned long t0 = millis();
 
   while (client.connected()) {
+    if ((millis() - t0) > CLIENT_TIMEOUT_MS) {
+      break;
+    }
     if (client.available()) {
+      t0 = millis();
       if (n >= ZBX_RX_BUF_SZ - 1) {
         while (client.available()) {
           (void)client.read();

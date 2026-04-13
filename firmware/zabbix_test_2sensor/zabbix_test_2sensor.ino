@@ -21,6 +21,8 @@ static byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xEE};
 #define ZBX_PAYLOAD_OFFSET   ZBX_HEADER_LEN
 #define ZBX_RX_BUF_SZ        160
 
+#define CLIENT_TIMEOUT_MS    3000
+
 #define DS18B20_PIN          4
 
 OneWire oneWire(DS18B20_PIN);
@@ -138,9 +140,14 @@ void loop() {
 
   size_t n = 0;
   bool oversize = false;
+  unsigned long t0 = millis();
 
   while (client.connected()) {
+    if ((millis() - t0) > CLIENT_TIMEOUT_MS) {
+      break;
+    }
     if (client.available()) {
+      t0 = millis();
       if (n >= ZBX_RX_BUF_SZ - 1) {
         while (client.available()) {
           (void)client.read();

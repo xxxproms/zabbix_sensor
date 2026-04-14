@@ -1,6 +1,10 @@
 /*
  * Zabbix passive agent (TCP 10050) + DS18B20 (DallasTemperature).
- * Стабильная работа 24/7: Watchdog + периодический сброс ENC28J60.
+ * Стабильная работа 24/7: Watchdog + аппаратный сброс ENC28J60.
+ *
+ * ВАЖНО: подключите провод Arduino D3 → RST (RESET) на ENC28J60.
+ * Это позволяет принудительно перезагружать сетевой чип из кода,
+ * без обесточивания всей платы.
  *
  * Документация: ../ZABBIX.md, ../NASTR_AYKA_I_OTLADKA.md
  */
@@ -11,10 +15,6 @@
 #include <UIPEthernet.h>
 #include <DallasTemperature.h>
 
-/*
- * Ранний сброс WDT до запуска main(). Без этого старый загрузчик
- * Arduino Nano/Uno попадает в бесконечный ребут после WDT-сброса.
- */
 void wdt_early_disable(void) __attribute__((naked, used, section(".init3")));
 void wdt_early_disable(void) {
   MCUSR = 0;
@@ -40,8 +40,13 @@ static IPAddress subnet(255, 255, 254, 0);
 #define CLIENT_TIMEOUT_MS    3000
 #define DS18B20_PIN          4
 
-// Полный переинит Ethernet каждые ETH_REINIT_MS (30 минут).
-#define ETH_REINIT_MS        1800000UL
+// Пин Arduino → RST на ENC28J60 (аппаратный сброс чипа).
+// Если не подключён, закомментируйте строку — будет только soft-reset.
+#define ENC_RESET_PIN        3
+
+// Переинит Ethernet каждые 5 минут (300 000 мс).
+// ENC28J60 на Arduino 3.3V нестабилен — частый reinit спасает.
+#define ETH_REINIT_MS        300000UL
 
 OneWire oneWire(DS18B20_PIN);
 DallasTemperature sensors(&oneWire);
@@ -49,12 +54,22 @@ EthernetServer server(ZBX_AGENT_PORT);
 
 static const uint8_t kDsResolution = 10;
 
-// ROM-адреса DS18B20 (получены сканером ds18b20_scan).
 DeviceAddress tempSensor1 = {0x28, 0x61, 0xE7, 0x58, 0xD4, 0xE1, 0x3C, 0x8E};
 DeviceAddress tempSensor2 = {0x28, 0xB7, 0x2A, 0x58, 0xD4, 0xE1, 0x3C, 0x36};
 
 static unsigned long lastEthReinit;
 static unsigned long requestCount;
+
+// ─── Аппаратный сброс ENC28J60 ─────────────────────────────
+static void hardResetENC() {
+#ifdef ENC_RESET_PIN
+  pinMode(ENC_RESET_PIN, OUTPUT);
+  digitalWrite(ENC_RESET_PIN, LOW);
+  delay(50);
+  digitalWrite(ENC_RESET_PIN, HIGH);
+  delay(200);
+#endif
+}
 
 // ─── Zabbix payload helpers ─────────────────────────────────
 static void writeLeU64(EthernetClient &client, uint64_t v) {
@@ -75,7 +90,6 @@ static void sendZbxNotSupported(EthernetClient &client) {
   sendZabbixPayload(client, "ZBX_NOTSUPPORTED");
 }
 
-// ─── Температура ────────────────────────────────────────────
 static void readTemperature(EthernetClient &client, DeviceAddress addr) {
   wdt_reset();
   sensors.requestTemperaturesByAddress(addr);
@@ -121,6 +135,7 @@ static void handleRequest(EthernetClient &client, char *rxBuf, size_t payloadLen
 // ─── Ethernet init / reinit ─────────────────────────────────
 static void initEthernet() {
   wdt_disable();
+  hardResetENC();
 #if defined(USE_STATIC_IP) && USE_STATIC_IP
   Ethernet.begin(mac, ip, dnsServer, gateway, subnet);
 #else
@@ -135,16 +150,11 @@ static void initEthernet() {
   wdt_enable(WDTO_8S);
 }
 
-static void printNetInfo() {
-  Serial.print(F("  IP:  "));  Serial.println(Ethernet.localIP());
-  Serial.print(F("  GW:  "));  Serial.println(Ethernet.gatewayIP());
-}
-
 // ─── Setup ──────────────────────────────────────────────────
 void setup() {
   delay(500);
   Serial.begin(9600);
-  Serial.println(F("Zabbix DS18B20 v3"));
+  Serial.println(F("Zabbix DS18B20 v4"));
 
   initEthernet();
 
@@ -152,15 +162,19 @@ void setup() {
   sensors.setWaitForConversion(true);
   sensors.setResolution(kDsResolution);
 
-  printNetInfo();
-  Serial.print(F("  DS:  "));
-  Serial.println(sensors.getDeviceCount(), DEC);
+  Serial.print(F("  IP:  "));  Serial.println(Ethernet.localIP());
+  Serial.print(F("  GW:  "));  Serial.println(Ethernet.gatewayIP());
+  Serial.print(F("  DS:  "));  Serial.println(sensors.getDeviceCount(), DEC);
+#ifdef ENC_RESET_PIN
+  Serial.print(F("  RST: D"));  Serial.println(ENC_RESET_PIN);
+#else
+  Serial.println(F("  RST: none (soft only)"));
+#endif
 
   extern int __heap_start, *__brkval;
   int v;
-  int freeRam = (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
   Serial.print(F("  RAM: "));
-  Serial.println(freeRam);
+  Serial.println((int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval));
   Serial.println(F("OK"));
 
   requestCount = 0;
@@ -170,7 +184,6 @@ void setup() {
 void loop() {
   wdt_reset();
 
-  // Превентивный сброс ENC28J60 каждые 30 минут
   if ((millis() - lastEthReinit) > ETH_REINIT_MS) {
     Serial.print(F("[reinit] r="));
     Serial.println(requestCount);

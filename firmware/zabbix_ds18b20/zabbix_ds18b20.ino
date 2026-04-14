@@ -1,23 +1,19 @@
 /*
  * Zabbix passive agent (TCP 10050) + DS18B20 (DallasTemperature).
+ * Стабильная работа 24/7: Watchdog, периодический сброс ENC28J60.
  *
- * Ключи и настройка в Zabbix: ../ZABBIX.md
- * Смещение ключа во входящем кадре — ZBX_PAYLOAD_OFFSET (сверка с дампом): ../ZABBIX.md
- * Пайка DS18B20, пины, комплектующие: ../MONTAZH_I_PAYKA_DS18B20.md
- * Схемы, BOM, ENC28J60, настройка: ../SCHEMA_I_SOEDINENIYA.md, ../OBSHIY_BOM.md, ../MONTAZH_ENC28J60.md, ../NASTR_AYKA_I_OTLADKA.md
+ * Документация: ../ZABBIX.md, ../NASTR_AYKA_I_OTLADKA.md
  */
 
 #include <string.h>
+#include <avr/wdt.h>
 #include <OneWire.h>
 #include <UIPEthernet.h>
 #include <DallasTemperature.h>
 
-// Уникальный MAC на каждой плате в L2 (не дублируйте на разных Ардуино).
+// ─── Сеть ────────────────────────────────────────────────────
 static byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED};
 
-// Сеть 10.10.0.0/23: маска 255.255.254.0, допустимые хосты 10.10.0.30–10.10.1.254.
-// На каждое устройство — свой ip и свой mac[].
-// Закомментируйте USE_STATIC_IP, если нужен только DHCP.
 #define USE_STATIC_IP 1
 #if defined(USE_STATIC_IP) && USE_STATIC_IP
 static IPAddress ip(10, 10, 0, 50);
@@ -26,27 +22,32 @@ static IPAddress gateway(10, 10, 0, 1);
 static IPAddress subnet(255, 255, 254, 0);
 #endif
 
+// ─── Параметры ──────────────────────────────────────────────
 #define ZBX_AGENT_PORT       10050
 #define ZBX_HEADER_LEN       13
 #define ZBX_PAYLOAD_OFFSET   ZBX_HEADER_LEN
 #define ZBX_RX_BUF_SZ        160
-
 #define CLIENT_TIMEOUT_MS    3000
-
 #define DS18B20_PIN          4
+
+// Полный переинит Ethernet каждые ETH_REINIT_MS (по умолчанию 30 минут).
+// ENC28J60 склонен к зависанию — это главная защита.
+#define ETH_REINIT_MS        1800000UL
 
 OneWire oneWire(DS18B20_PIN);
 DallasTemperature sensors(&oneWire);
 EthernetServer server(ZBX_AGENT_PORT);
 
-// 9..12 бит; библиотека выдержит время преобразования при setWaitForConversion(true).
 static const uint8_t kDsResolution = 10;
 
-// ROM-адреса ваших DS18B20 (получены сканером ds18b20_scan).
-// Если датчиков другие — перезалейте ds18b20_scan и скопируйте ROM сюда.
+// ROM-адреса DS18B20 (получены сканером ds18b20_scan).
 DeviceAddress tempSensor1 = {0x28, 0x61, 0xE7, 0x58, 0xD4, 0xE1, 0x3C, 0x8E};
 DeviceAddress tempSensor2 = {0x28, 0xB7, 0x2A, 0x58, 0xD4, 0xE1, 0x3C, 0x36};
 
+static unsigned long lastEthReinit;
+static unsigned long requestCount;
+
+// ─── Zabbix payload helpers ─────────────────────────────────
 static void writeLeU64(EthernetClient &client, uint64_t v) {
   uint8_t b[8];
   for (uint8_t i = 0; i < 8; i++) {
@@ -68,9 +69,10 @@ static void sendZbxNotSupported(EthernetClient &client) {
   client.write((const uint8_t *)msg, strlen(msg));
 }
 
-static void readTemperature(EthernetClient &client, DeviceAddress deviceAddress) {
-  sensors.requestTemperaturesByAddress(deviceAddress);
-  float c = sensors.getTempC(deviceAddress);
+// ─── Температура ────────────────────────────────────────────
+static void readTemperature(EthernetClient &client, DeviceAddress addr) {
+  sensors.requestTemperaturesByAddress(addr);
+  float c = sensors.getTempC(addr);
   if (c == DEVICE_DISCONNECTED_C) {
     sendZbxNotSupported(client);
     return;
@@ -80,16 +82,14 @@ static void readTemperature(EthernetClient &client, DeviceAddress deviceAddress)
   sendZabbixPayload(client, buf);
 }
 
+// ─── Протокол ───────────────────────────────────────────────
 static bool decodePayloadLen(const char *hdr, uint64_t *outLen) {
   uint64_t payloadLen = 0;
   for (uint8_t i = 0; i < 8; i++) {
     payloadLen |= (uint64_t)(uint8_t)hdr[5 + i] << (i * 8);
   }
   *outLen = payloadLen;
-  if (payloadLen > (uint64_t)(ZBX_RX_BUF_SZ - ZBX_HEADER_LEN - 1)) {
-    return false;
-  }
-  return true;
+  return payloadLen <= (uint64_t)(ZBX_RX_BUF_SZ - ZBX_HEADER_LEN - 1);
 }
 
 static void handleRequest(EthernetClient &client, char *rxBuf, size_t payloadLen) {
@@ -111,41 +111,65 @@ static void handleRequest(EthernetClient &client, char *rxBuf, size_t payloadLen
   }
 }
 
-void setup() {
-  delay(500);
-  Serial.begin(9600);
-  Serial.println(F("Zabbix DS18B20 agent, init..."));
-
+// ─── Ethernet init / reinit ─────────────────────────────────
+static void initEthernet() {
 #if defined(USE_STATIC_IP) && USE_STATIC_IP
-  Serial.println(F("Ethernet: static IP..."));
   Ethernet.begin(mac, ip, dnsServer, gateway, subnet);
 #else
-  Serial.println(F("Ethernet: DHCP..."));
   if (Ethernet.begin(mac) == 0) {
-    Serial.println(F("DHCP FAILED — проверьте кабель и роутер"));
-    while (true) { delay(1000); }
+    Serial.println(F("DHCP FAILED"));
+    delay(5000);
+    wdt_enable(WDTO_250MS);
+    while (true) {}
   }
 #endif
   server.begin();
+  lastEthReinit = millis();
+}
+
+static void printNetInfo() {
+  Serial.print(F("  IP:   ")); Serial.println(Ethernet.localIP());
+  Serial.print(F("  Mask: ")); Serial.println(Ethernet.subnetMask());
+  Serial.print(F("  GW:   ")); Serial.println(Ethernet.gatewayIP());
+  Serial.print(F("  DNS:  ")); Serial.println(Ethernet.dnsServerIP());
+}
+
+// ─── Setup ──────────────────────────────────────────────────
+void setup() {
+  wdt_disable();
+  delay(500);
+  Serial.begin(9600);
+  Serial.println(F("Zabbix DS18B20 agent v2 (watchdog + reinit)"));
+
+  initEthernet();
 
   sensors.begin();
   sensors.setWaitForConversion(true);
   sensors.setResolution(kDsResolution);
 
-  Serial.print(F("  IP:   "));
-  Serial.println(Ethernet.localIP());
-  Serial.print(F("  Mask: "));
-  Serial.println(Ethernet.subnetMask());
-  Serial.print(F("  GW:   "));
-  Serial.println(Ethernet.gatewayIP());
-  Serial.print(F("  DNS:  "));
-  Serial.println(Ethernet.dnsServerIP());
+  printNetInfo();
   Serial.print(F("DS18B20 count: "));
   Serial.println(sensors.getDeviceCount(), DEC);
-  Serial.println(F("Ready."));
+  Serial.println(F("Ready. WDT 8s enabled."));
+
+  requestCount = 0;
+  wdt_enable(WDTO_8S);
 }
 
+// ─── Loop ───────────────────────────────────────────────────
 void loop() {
+  wdt_reset();
+
+  // Превентивный сброс ENC28J60 каждые ETH_REINIT_MS
+  if ((millis() - lastEthReinit) > ETH_REINIT_MS) {
+    Serial.print(F("[reinit eth] uptime="));
+    Serial.print(millis() / 60000UL);
+    Serial.print(F("m reqs="));
+    Serial.println(requestCount);
+    initEthernet();
+    printNetInfo();
+  }
+
   static char rxBuf[ZBX_RX_BUF_SZ];
   EthernetClient client = server.available();
   if (!client) {
@@ -157,15 +181,14 @@ void loop() {
   unsigned long t0 = millis();
 
   while (client.connected()) {
+    wdt_reset();
     if ((millis() - t0) > CLIENT_TIMEOUT_MS) {
       break;
     }
     if (client.available()) {
       t0 = millis();
       if (n >= ZBX_RX_BUF_SZ - 1) {
-        while (client.available()) {
-          (void)client.read();
-        }
+        while (client.available()) { (void)client.read(); }
         oversize = true;
         break;
       }
@@ -184,6 +207,7 @@ void loop() {
         }
         if (n == need) {
           handleRequest(client, rxBuf, (size_t)payloadLen);
+          requestCount++;
           break;
         }
       }

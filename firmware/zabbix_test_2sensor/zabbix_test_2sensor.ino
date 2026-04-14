@@ -1,29 +1,28 @@
 /*
- * Тестовая плата: Zabbix agent (10050) + 2x DS18B20.
- * Сеть: DHCP (Ethernet.begin(mac)). В Zabbix укажите IP из Serial или резерв на роутере по MAC.
- * ROM сняты сканером.
+ * Тестовая плата: Zabbix agent (10050) + 2x DS18B20, DHCP.
+ * Стабильная работа 24/7: Watchdog, периодический сброс ENC28J60.
  *
  * Ключи: agent.ping, env.temp (сенсор 0), env.temp1 (сенсор 1).
- *
- * Документация проекта: ../ZABBIX.md, ../NASTR_AYKA_I_OTLADKA.md
+ * Документация: ../ZABBIX.md, ../NASTR_AYKA_I_OTLADKA.md
  */
 
 #include <string.h>
+#include <avr/wdt.h>
 #include <OneWire.h>
 #include <UIPEthernet.h>
 #include <DallasTemperature.h>
 
-// Уникальный MAC этой тестовой платы (не дублируйте с другими устройствами в L2).
+// ─── Сеть ────────────────────────────────────────────────────
 static byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xEE};
 
+// ─── Параметры ──────────────────────────────────────────────
 #define ZBX_AGENT_PORT       10050
 #define ZBX_HEADER_LEN       13
 #define ZBX_PAYLOAD_OFFSET   ZBX_HEADER_LEN
 #define ZBX_RX_BUF_SZ        160
-
 #define CLIENT_TIMEOUT_MS    3000
-
 #define DS18B20_PIN          4
+#define ETH_REINIT_MS        1800000UL
 
 OneWire oneWire(DS18B20_PIN);
 DallasTemperature sensors(&oneWire);
@@ -34,6 +33,10 @@ static const uint8_t kDsResolution = 10;
 DeviceAddress tempSensor1 = {0x28, 0x61, 0xE7, 0x58, 0xD4, 0xE1, 0x3C, 0x8E};
 DeviceAddress tempSensor2 = {0x28, 0xB7, 0x2A, 0x58, 0xD4, 0xE1, 0x3C, 0x36};
 
+static unsigned long lastEthReinit;
+static unsigned long requestCount;
+
+// ─── Zabbix payload helpers ─────────────────────────────────
 static void writeLeU64(EthernetClient &client, uint64_t v) {
   uint8_t b[8];
   for (uint8_t i = 0; i < 8; i++) {
@@ -55,9 +58,10 @@ static void sendZbxNotSupported(EthernetClient &client) {
   client.write((const uint8_t *)msg, strlen(msg));
 }
 
-static void readTemperature(EthernetClient &client, DeviceAddress deviceAddress) {
-  sensors.requestTemperaturesByAddress(deviceAddress);
-  float c = sensors.getTempC(deviceAddress);
+// ─── Температура ────────────────────────────────────────────
+static void readTemperature(EthernetClient &client, DeviceAddress addr) {
+  sensors.requestTemperaturesByAddress(addr);
+  float c = sensors.getTempC(addr);
   if (c == DEVICE_DISCONNECTED_C) {
     sendZbxNotSupported(client);
     return;
@@ -67,16 +71,14 @@ static void readTemperature(EthernetClient &client, DeviceAddress deviceAddress)
   sendZabbixPayload(client, buf);
 }
 
+// ─── Протокол ───────────────────────────────────────────────
 static bool decodePayloadLen(const char *hdr, uint64_t *outLen) {
   uint64_t payloadLen = 0;
   for (uint8_t i = 0; i < 8; i++) {
     payloadLen |= (uint64_t)(uint8_t)hdr[5 + i] << (i * 8);
   }
   *outLen = payloadLen;
-  if (payloadLen > (uint64_t)(ZBX_RX_BUF_SZ - ZBX_HEADER_LEN - 1)) {
-    return false;
-  }
-  return true;
+  return payloadLen <= (uint64_t)(ZBX_RX_BUF_SZ - ZBX_HEADER_LEN - 1);
 }
 
 static void handleRequest(EthernetClient &client, char *rxBuf, size_t payloadLen) {
@@ -98,39 +100,60 @@ static void handleRequest(EthernetClient &client, char *rxBuf, size_t payloadLen
   }
 }
 
+// ─── Ethernet init / reinit ─────────────────────────────────
+static void initEthernet() {
+  if (Ethernet.begin(mac) == 0) {
+    Serial.println(F("DHCP FAILED"));
+    delay(5000);
+    wdt_enable(WDTO_250MS);
+    while (true) {}
+  }
+  server.begin();
+  lastEthReinit = millis();
+}
+
+static void printNetInfo() {
+  Serial.print(F("  IP:   ")); Serial.println(Ethernet.localIP());
+  Serial.print(F("  Mask: ")); Serial.println(Ethernet.subnetMask());
+  Serial.print(F("  GW:   ")); Serial.println(Ethernet.gatewayIP());
+  Serial.print(F("  DNS:  ")); Serial.println(Ethernet.dnsServerIP());
+}
+
+// ─── Setup ──────────────────────────────────────────────────
 void setup() {
+  wdt_disable();
   delay(500);
   Serial.begin(9600);
-  Serial.println(F("TEST 2x DS18B20, DHCP..."));
+  Serial.println(F("TEST 2x DS18B20 v2 (watchdog + reinit), DHCP..."));
 
-  if (Ethernet.begin(mac) == 0) {
-    Serial.println(F("DHCP failed — проверьте кабель и роутер"));
-    while (true) {
-      delay(1000);
-    }
-  }
-
-  server.begin();
+  initEthernet();
 
   sensors.begin();
   sensors.setWaitForConversion(true);
   sensors.setResolution(kDsResolution);
 
-  Serial.println(F("DHCP OK, сеть:"));
-  Serial.print(F("  IP:   "));
-  Serial.println(Ethernet.localIP());
-  Serial.print(F("  Mask: "));
-  Serial.println(Ethernet.subnetMask());
-  Serial.print(F("  GW:   "));
-  Serial.println(Ethernet.gatewayIP());
-  Serial.print(F("  DNS:  "));
-  Serial.println(Ethernet.dnsServerIP());
+  printNetInfo();
   Serial.print(F("DS18B20 count: "));
   Serial.println(sensors.getDeviceCount(), DEC);
+  Serial.println(F("Ready. WDT 8s enabled."));
+
+  requestCount = 0;
+  wdt_enable(WDTO_8S);
 }
 
+// ─── Loop ───────────────────────────────────────────────────
 void loop() {
+  wdt_reset();
   (void)Ethernet.maintain();
+
+  if ((millis() - lastEthReinit) > ETH_REINIT_MS) {
+    Serial.print(F("[reinit eth] uptime="));
+    Serial.print(millis() / 60000UL);
+    Serial.print(F("m reqs="));
+    Serial.println(requestCount);
+    initEthernet();
+    printNetInfo();
+  }
 
   static char rxBuf[ZBX_RX_BUF_SZ];
   EthernetClient client = server.available();
@@ -143,15 +166,14 @@ void loop() {
   unsigned long t0 = millis();
 
   while (client.connected()) {
+    wdt_reset();
     if ((millis() - t0) > CLIENT_TIMEOUT_MS) {
       break;
     }
     if (client.available()) {
       t0 = millis();
       if (n >= ZBX_RX_BUF_SZ - 1) {
-        while (client.available()) {
-          (void)client.read();
-        }
+        while (client.available()) { (void)client.read(); }
         oversize = true;
         break;
       }
@@ -170,6 +192,7 @@ void loop() {
         }
         if (n == need) {
           handleRequest(client, rxBuf, (size_t)payloadLen);
+          requestCount++;
           break;
         }
       }

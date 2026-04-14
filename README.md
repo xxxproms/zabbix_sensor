@@ -1,119 +1,109 @@
-# Zabbix sensor: Arduino + DS18B20 + пассивный Zabbix agent
+# Zabbix sensor: Arduino + DS18B20 + Ethernet
 
-Прошивка для **Arduino** с **Ethernet (ENC28J60 + UIPEthernet)** и датчиками **DS18B20** по шине **1-Wire**. Устройство отвечает на запросы **Zabbix Server / Proxy** как **пассивный Zabbix agent** на **TCP 10050** и отдаёт значения температуры по заранее заданным ключам.
+Прошивка для **Arduino Nano/Uno** (ATmega328P) с сетевым модулем **ENC28J60** и датчиками температуры **DS18B20**. Устройство работает как **пассивный Zabbix-агент** на порту **TCP 10050**: Zabbix сам подключается и забирает данные.
 
-Цель проекта — недорогой съём температуры в стойке, серверной или бытовых зонах с прямой интеграцией в Zabbix **без промежуточных скриптов** на стороне сервера (только стандартный тип элемента «Zabbix agent»).
+Проверено на **Zabbix 7.4.8**.
 
-**Проверка на стороне сервера:** Zabbix **7.4.8** (пассивный опрос по тому же протоколу, что у Zabbix agent; см. [firmware/ZABBIX.md](firmware/ZABBIX.md)).
-
-### Документация проекта (карта)
-
-| Документ | Содержание |
-|----------|------------|
-| [firmware/OBSHIY_BOM.md](firmware/OBSHIY_BOM.md) | Общий список комплектующих на одно устройство |
-| [firmware/SCHEMA_I_SOEDINENIYA.md](firmware/SCHEMA_I_SOEDINENIYA.md) | Блок-схемы (Mermaid), ASCII-схемы 1-Wire и ENC28J60 |
-| [firmware/MONTAZH_ENC28J60.md](firmware/MONTAZH_ENC28J60.md) | Подключение Ethernet-модуля, питание 3.3 В, таблица пинов |
-| [firmware/MONTAZH_I_PAYKA_DS18B20.md](firmware/MONTAZH_I_PAYKA_DS18B20.md) | Пайка DS18B20, BOM, типичные ошибки |
-| [firmware/NASTR_AYKA_I_OTLADKA.md](firmware/NASTR_AYKA_I_OTLADKA.md) | Настройка IDE, ROM датчиков, Zabbix, отладка |
-| [firmware/ZABBIX.md](firmware/ZABBIX.md) | Ключи агента, элементы данных, протокол TCP |
-| [firmware/ds18b20_scan/](firmware/ds18b20_scan/) | Вспомогательный скетч для чтения адресов DS18B20 |
+**Репозиторий:** https://github.com/xxxproms/zabbix_sensor
 
 ---
 
-## Возможности
+## Что умеет
 
-- Пассивный опрос Zabbix (тот же порт и бинарный заголовок `ZBXD`, что у классического агента).
-- До **четырёх** датчиков DS18B20 на одной линии 1-Wire (адреса ROM задаются в скетче).
-- Ключи: `agent.ping`, `env.temp`, `env.temp1` … `env.temp3`; неизвестный ключ → ответ с телом `ZBX_NOTSUPPORTED` и корректной длиной в заголовке.
-- Чтение температуры через **DallasTemperature** (разрешение по умолчанию **10 бит**, ожидание преобразования включено).
-- Приём запроса буфером фиксированного размера, разбор **полной** длины payload (**uint64 little-endian**), без класса `String` в горячем пути (меньше фрагментации кучи на AVR).
-
-Подробнее по ключам, элементам данных и проверке протокола — **[firmware/ZABBIX.md](firmware/ZABBIX.md)**.
-
-**Пайка и распайка DS18B20 (пины, BOM, типичные ошибки):** **[firmware/MONTAZH_I_PAYKA_DS18B20.md](firmware/MONTAZH_I_PAYKA_DS18B20.md)**.
+- Отдаёт температуру с **2 датчиков** DS18B20 по ключам `env.temp` и `env.temp1`.
+- Отвечает на `agent.ping` (проверка доступности).
+- Автоматически переинициализирует ENC28J60 каждые 3 минуты для стабильной работы 24/7.
+- Аппаратный Watchdog Timer — если код завис, Arduino перезагрузится сама.
 
 ---
 
-## Аппаратная часть
+## Что понадобится
 
 | Компонент | Примечание |
 |-----------|------------|
-| Arduino-совместимая плата | Например Uno/Nano (ATmega328P) |
-| Модуль Ethernet **ENC28J60** | Стек **UIPEthernet** |
-| DS18B20 | 1–4 шт., линия данных на **D4** (константа `DS18B20_PIN` в скетче) |
-| Питание и подтяжка 1-Wire | Резистор 4.7 kΩ к VCC на DQ при схеме с внешним питанием датчиков |
-
-У **ENC28J60** обеспечьте **стабильное 3.3 В**; при проблемах с сетью часто помогает **статический IP** (см. `USE_STATIC_IP` в скетче).
-
----
-
-## Программная часть (Arduino IDE / Arduino CLI)
-
-### Расположение скетчей
-
-- Основной проект: [firmware/zabbix_ds18b20/zabbix_ds18b20.ino](firmware/zabbix_ds18b20/zabbix_ds18b20.ino)
-- Тестовая плата (2 датчика, **DHCP**): [firmware/zabbix_test_2sensor/zabbix_test_2sensor.ino](firmware/zabbix_test_2sensor/zabbix_test_2sensor.ino)
-- Поиск адресов DS18B20: [firmware/ds18b20_scan/ds18b20_scan.ino](firmware/ds18b20_scan/ds18b20_scan.ino)
-
-Откройте папку со скетчем в Arduino IDE (имя папки должно совпадать с именем `.ino`).
-
-### Зависимости (менеджер библиотек)
-
-- **OneWire**
-- **DallasTemperature** (Miles Burton / актуальний форк для вашей платы)
-- **UIPEthernet** (для ENC28J60)
-
-### Что настроить перед прошивкой
-
-1. **MAC-адрес** массив `mac[]` — уникальный в вашей L2-сети.
-2. **Статический IP под вашу сеть:** в скетче по умолчанию **10.10.0.0/23** (`255.255.254.0`), хосты **10.10.0.30–10.10.1.254** — задайте уникальный `ip` на каждую плату, при необходимости **gateway** и **dnsServer** (по умолчанию в примере `10.10.0.1`). Закомментируйте `#define USE_STATIC_IP`, если нужен только DHCP.
-3. **ROM-адреса** DS18B20 в `tempSensor1` … `tempSensor4` — подставьте свои (например, выведите через пример «sensor search» DallasTemperature).
+| Arduino Nano или Uno (ATmega328P) | Контроллер |
+| NANO Ethernet Shield (ENC28J60) или отдельный модуль ENC28J60 | Подключается как «бутерброд» или проводами по SPI |
+| DS18B20 (1–2 шт.) | Датчики температуры, шина 1-Wire на пин D4 |
+| Резистор 4.7 кОм | Подтяжка линии DQ (один на всю шину) |
+| Кабель Ethernet | Для подключения к коммутатору |
+| USB-кабель или блок питания 5V | Питание Arduino |
 
 ---
 
-## Интеграция с Zabbix
+## Документация (карта проекта)
 
-Полная пошаговая инструкция для **Zabbix 7.4.x** (хост, группа, интерфейс Agent, элементы данных, прокси, проверка `zabbix_get`, **Last data**) и технический разбор протокола — в **[firmware/ZABBIX.md](firmware/ZABBIX.md)**.
+| Документ | Что внутри |
+|----------|------------|
+| [OBSHIY_BOM.md](firmware/OBSHIY_BOM.md) | Полный список комплектующих |
+| [SCHEMA_I_SOEDINENIYA.md](firmware/SCHEMA_I_SOEDINENIYA.md) | Схемы подключения (блок-схемы, ASCII, Mermaid) |
+| [MONTAZH_ENC28J60.md](firmware/MONTAZH_ENC28J60.md) | Подключение Ethernet-модуля, питание 3.3V |
+| [MONTAZH_I_PAYKA_DS18B20.md](firmware/MONTAZH_I_PAYKA_DS18B20.md) | Пайка датчиков DS18B20, распиновка, ошибки |
+| [NASTR_AYKA_I_OTLADKA.md](firmware/NASTR_AYKA_I_OTLADKA.md) | Настройка Arduino IDE, первый запуск, отладка |
+| [ZABBIX.md](firmware/ZABBIX.md) | Пошаговое добавление в Zabbix (хост, элементы, проверка) |
 
 ---
 
-## Откуда взялась прошивка и что улучшено
+## Скетчи (прошивки)
 
-Исходная идея — самописный агент под старый код с `String`, неинициализированным `addr` для MAC/EEPROM DS18B20, короткой задержкой преобразования и неполным разбором длины запроса. Текущая версия в репозитории исправляет эти моменты и опирается на типичную реализацию заголовка Zabbix (в духе проектов вроде [zabbuino](https://github.com/zbx-sadman/zabbuino)).
+| Скетч | Назначение |
+|-------|------------|
+| [zabbix_ds18b20.ino](firmware/zabbix_ds18b20/zabbix_ds18b20.ino) | **Основная прошивка** — Zabbix-агент, статический IP, 2 датчика |
+| [zabbix_test_2sensor.ino](firmware/zabbix_test_2sensor/zabbix_test_2sensor.ino) | Тестовая прошивка — то же, но через DHCP |
+| [ds18b20_scan.ino](firmware/ds18b20_scan/ds18b20_scan.ino) | Вспомогательный — сканирует ROM-адреса датчиков |
 
 ---
 
-## Похожие открытые проекты
+## Быстрый старт
 
-- [zabbuino](https://github.com/zbx-sadman/zabbuino) — расширяемый Zabbix agent для Arduino с множеством датчиков.
-- [arduino-zabbix-temp](https://github.com/hedgeven/arduino-zabbix-temp) — температуры и Zabbix.
-- [arduino-zabbix-agent](https://github.com/marcofischer/arduino-zabbix-agent), [Arduino-Zabbix-Agent](https://github.com/interlegis/Arduino-Zabbix-Agent) — агенты на Arduino.
+### 1. Подготовка железа
+
+- Соберите Arduino + ENC28J60 + DS18B20 по [схеме подключения](firmware/SCHEMA_I_SOEDINENIYA.md).
+- Подключите Ethernet-кабель к коммутатору.
+
+### 2. Узнайте ROM-адреса датчиков
+
+- Залейте [ds18b20_scan.ino](firmware/ds18b20_scan/ds18b20_scan.ino).
+- Откройте Serial Monitor (9600 бод).
+- Скопируйте строки `DeviceAddress tempSensorX = {...}`.
+
+### 3. Настройте основной скетч
+
+Откройте [zabbix_ds18b20.ino](firmware/zabbix_ds18b20/zabbix_ds18b20.ino) и отредактируйте:
+
+- **MAC-адрес** (`mac[]`) — уникальный для каждой платы.
+- **IP-адрес** (`ip`) — свободный адрес в вашей сети.
+- **Шлюз и маска** (`gateway`, `subnet`) — под вашу сеть.
+- **ROM датчиков** (`tempSensor1`, `tempSensor2`) — вставьте свои из сканера.
+
+### 4. Залейте прошивку
+
+- Arduino IDE → выберите плату (Nano / Uno), порт.
+- Установите библиотеки: **OneWire**, **DallasTemperature**, **UIPEthernet**.
+- Загрузите скетч.
+
+### 5. Проверьте
+
+- Serial Monitor (9600) покажет IP, шлюз, количество датчиков, свободную RAM.
+- С сервера Zabbix: `zabbix_get -s <IP> -p 10050 -k agent.ping` → ответ `1`.
+
+### 6. Добавьте в Zabbix
+
+Пошаговая инструкция: [ZABBIX.md](firmware/ZABBIX.md).
+
+---
+
+## Стабильность (Watchdog + reinit)
+
+ENC28J60 склонен к зависанию при слабом питании 3.3V. Прошивка защищена:
+
+- **Watchdog Timer 8 сек** — если код завис, MCU перезагрузится автоматически.
+- **Переинициализация ENC28J60 каждые 3 минуты** — не даёт чипу зависнуть.
+- **Ранний сброс WDT в секции .init3** — работает с любым загрузчиком (старым и новым).
+
+Если ENC28J60 всё равно нестабилен — рекомендуется внешний стабилизатор 3.3V (AMS1117-3.3) или замена на модуль **W5500**.
 
 ---
 
 ## Лицензия
 
 [MIT](LICENSE)
-
----
-
-## Публикация на GitHub
-
-Основной репозиторий проекта: **https://github.com/xxxproms/zabbix_sensor**
-
-Если вы клонируете проект и хотите выложить **свою** копию, создайте репозиторий **в своём аккаунте** (веб-интерфейс или GitHub CLI), затем привяжите `remote` и отправьте ветку:
-
-```bash
-cd /path/to/zabbix_sensor
-git remote add origin https://github.com/<ваш_user>/<имя_репо>.git
-git branch -M main
-git push -u origin main
-```
-
-С **GitHub CLI** (`gh auth login` уже выполнен):
-
-```bash
-gh repo create <имя_репо> --public --source=. --remote=origin --push
-```
-
-Рекомендуется в настройках репозитория на GitHub добавить **описание** и темы (*topics*), например: `zabbix`, `arduino`, `ds18b20`, `enc28j60`, `monitoring`.

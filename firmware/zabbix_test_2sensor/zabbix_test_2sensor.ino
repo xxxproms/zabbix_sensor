@@ -1,8 +1,6 @@
 /*
  * Тестовая плата: Zabbix agent (10050) + 2x DS18B20, DHCP.
- * Стабильная работа 24/7: Watchdog + аппаратный сброс ENC28J60.
- *
- * ВАЖНО: подключите провод Arduino D3 → RST на ENC28J60.
+ * Стабильная работа 24/7: Watchdog + частый программный reinit ENC28J60.
  *
  * Ключи: agent.ping, env.temp, env.temp1.
  * Документация: ../ZABBIX.md, ../NASTR_AYKA_I_OTLADKA.md
@@ -28,8 +26,7 @@ static byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xEE};
 #define ZBX_RX_BUF_SZ        128
 #define CLIENT_TIMEOUT_MS    3000
 #define DS18B20_PIN          4
-#define ENC_RESET_PIN        3
-#define ETH_REINIT_MS        300000UL
+#define ETH_REINIT_MS        180000UL
 
 OneWire oneWire(DS18B20_PIN);
 DallasTemperature sensors(&oneWire);
@@ -42,16 +39,6 @@ DeviceAddress tempSensor2 = {0x28, 0xB7, 0x2A, 0x58, 0xD4, 0xE1, 0x3C, 0x36};
 
 static unsigned long lastEthReinit;
 static unsigned long requestCount;
-
-static void hardResetENC() {
-#ifdef ENC_RESET_PIN
-  pinMode(ENC_RESET_PIN, OUTPUT);
-  digitalWrite(ENC_RESET_PIN, LOW);
-  delay(50);
-  digitalWrite(ENC_RESET_PIN, HIGH);
-  delay(200);
-#endif
-}
 
 static void writeLeU64(EthernetClient &client, uint64_t v) {
   uint8_t b[8];
@@ -114,7 +101,6 @@ static void handleRequest(EthernetClient &client, char *rxBuf, size_t payloadLen
 
 static void initEthernet() {
   wdt_disable();
-  hardResetENC();
   if (Ethernet.begin(mac) == 0) {
     Serial.println(F("DHCP FAILED"));
     delay(5000);
@@ -128,7 +114,7 @@ static void initEthernet() {
 void setup() {
   delay(500);
   Serial.begin(9600);
-  Serial.println(F("TEST 2xDS v4 DHCP"));
+  Serial.println(F("TEST 2xDS v5 DHCP"));
 
   initEthernet();
 

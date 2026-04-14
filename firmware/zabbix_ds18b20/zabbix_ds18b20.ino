@@ -1,10 +1,6 @@
 /*
  * Zabbix passive agent (TCP 10050) + DS18B20 (DallasTemperature).
- * Стабильная работа 24/7: Watchdog + аппаратный сброс ENC28J60.
- *
- * ВАЖНО: подключите провод Arduino D3 → RST (RESET) на ENC28J60.
- * Это позволяет принудительно перезагружать сетевой чип из кода,
- * без обесточивания всей платы.
+ * Стабильная работа 24/7: Watchdog + частый программный reinit ENC28J60.
  *
  * Документация: ../ZABBIX.md, ../NASTR_AYKA_I_OTLADKA.md
  */
@@ -40,13 +36,9 @@ static IPAddress subnet(255, 255, 254, 0);
 #define CLIENT_TIMEOUT_MS    3000
 #define DS18B20_PIN          4
 
-// Пин Arduino → RST на ENC28J60 (аппаратный сброс чипа).
-// Если не подключён, закомментируйте строку — будет только soft-reset.
-#define ENC_RESET_PIN        3
-
-// Переинит Ethernet каждые 5 минут (300 000 мс).
-// ENC28J60 на Arduino 3.3V нестабилен — частый reinit спасает.
-#define ETH_REINIT_MS        300000UL
+// Переинит Ethernet каждые 3 минуты (180 с).
+// ENC28J60 на слабом 3.3V нестабилен — частый reinit не даёт зависнуть.
+#define ETH_REINIT_MS        180000UL
 
 OneWire oneWire(DS18B20_PIN);
 DallasTemperature sensors(&oneWire);
@@ -59,17 +51,6 @@ DeviceAddress tempSensor2 = {0x28, 0xB7, 0x2A, 0x58, 0xD4, 0xE1, 0x3C, 0x36};
 
 static unsigned long lastEthReinit;
 static unsigned long requestCount;
-
-// ─── Аппаратный сброс ENC28J60 ─────────────────────────────
-static void hardResetENC() {
-#ifdef ENC_RESET_PIN
-  pinMode(ENC_RESET_PIN, OUTPUT);
-  digitalWrite(ENC_RESET_PIN, LOW);
-  delay(50);
-  digitalWrite(ENC_RESET_PIN, HIGH);
-  delay(200);
-#endif
-}
 
 // ─── Zabbix payload helpers ─────────────────────────────────
 static void writeLeU64(EthernetClient &client, uint64_t v) {
@@ -135,7 +116,6 @@ static void handleRequest(EthernetClient &client, char *rxBuf, size_t payloadLen
 // ─── Ethernet init / reinit ─────────────────────────────────
 static void initEthernet() {
   wdt_disable();
-  hardResetENC();
 #if defined(USE_STATIC_IP) && USE_STATIC_IP
   Ethernet.begin(mac, ip, dnsServer, gateway, subnet);
 #else
@@ -154,7 +134,7 @@ static void initEthernet() {
 void setup() {
   delay(500);
   Serial.begin(9600);
-  Serial.println(F("Zabbix DS18B20 v4"));
+  Serial.println(F("Zabbix DS18B20 v5"));
 
   initEthernet();
 
@@ -165,11 +145,6 @@ void setup() {
   Serial.print(F("  IP:  "));  Serial.println(Ethernet.localIP());
   Serial.print(F("  GW:  "));  Serial.println(Ethernet.gatewayIP());
   Serial.print(F("  DS:  "));  Serial.println(sensors.getDeviceCount(), DEC);
-#ifdef ENC_RESET_PIN
-  Serial.print(F("  RST: D"));  Serial.println(ENC_RESET_PIN);
-#else
-  Serial.println(F("  RST: none (soft only)"));
-#endif
 
   extern int __heap_start, *__brkval;
   int v;

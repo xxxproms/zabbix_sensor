@@ -1,6 +1,6 @@
 /*
  * Тестовая плата: Zabbix agent (10050) + 2x DS18B20, DHCP.
- * Стабильная работа 24/7: Watchdog, периодический сброс ENC28J60.
+ * Стабильная работа 24/7: Watchdog + периодический сброс ENC28J60.
  *
  * Ключи: agent.ping, env.temp (сенсор 0), env.temp1 (сенсор 1).
  * Документация: ../ZABBIX.md, ../NASTR_AYKA_I_OTLADKA.md
@@ -12,6 +12,12 @@
 #include <UIPEthernet.h>
 #include <DallasTemperature.h>
 
+void wdt_early_disable(void) __attribute__((naked, used, section(".init3")));
+void wdt_early_disable(void) {
+  MCUSR = 0;
+  wdt_disable();
+}
+
 // ─── Сеть ────────────────────────────────────────────────────
 static byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xEE};
 
@@ -19,7 +25,7 @@ static byte mac[] = {0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xEE};
 #define ZBX_AGENT_PORT       10050
 #define ZBX_HEADER_LEN       13
 #define ZBX_PAYLOAD_OFFSET   ZBX_HEADER_LEN
-#define ZBX_RX_BUF_SZ        160
+#define ZBX_RX_BUF_SZ        128
 #define CLIENT_TIMEOUT_MS    3000
 #define DS18B20_PIN          4
 #define ETH_REINIT_MS        1800000UL
@@ -52,21 +58,18 @@ static void sendZabbixPayload(EthernetClient &client, const char *payload) {
 }
 
 static void sendZbxNotSupported(EthernetClient &client) {
-  const char msg[] = "ZBX_NOTSUPPORTED";
-  client.print(F("ZBXD\x01"));
-  writeLeU64(client, (uint64_t)strlen(msg));
-  client.write((const uint8_t *)msg, strlen(msg));
+  sendZabbixPayload(client, "ZBX_NOTSUPPORTED");
 }
 
-// ─── Температура ────────────────────────────────────────────
 static void readTemperature(EthernetClient &client, DeviceAddress addr) {
+  wdt_reset();
   sensors.requestTemperaturesByAddress(addr);
   float c = sensors.getTempC(addr);
   if (c == DEVICE_DISCONNECTED_C) {
     sendZbxNotSupported(client);
     return;
   }
-  char buf[20];
+  char buf[16];
   dtostrf(c, 1, 2, buf);
   sendZabbixPayload(client, buf);
 }
@@ -102,29 +105,27 @@ static void handleRequest(EthernetClient &client, char *rxBuf, size_t payloadLen
 
 // ─── Ethernet init / reinit ─────────────────────────────────
 static void initEthernet() {
+  wdt_disable();
   if (Ethernet.begin(mac) == 0) {
     Serial.println(F("DHCP FAILED"));
     delay(5000);
-    wdt_enable(WDTO_250MS);
-    while (true) {}
+    asm volatile ("jmp 0");
   }
   server.begin();
   lastEthReinit = millis();
+  wdt_enable(WDTO_8S);
 }
 
 static void printNetInfo() {
-  Serial.print(F("  IP:   ")); Serial.println(Ethernet.localIP());
-  Serial.print(F("  Mask: ")); Serial.println(Ethernet.subnetMask());
-  Serial.print(F("  GW:   ")); Serial.println(Ethernet.gatewayIP());
-  Serial.print(F("  DNS:  ")); Serial.println(Ethernet.dnsServerIP());
+  Serial.print(F("  IP:  "));  Serial.println(Ethernet.localIP());
+  Serial.print(F("  GW:  "));  Serial.println(Ethernet.gatewayIP());
 }
 
 // ─── Setup ──────────────────────────────────────────────────
 void setup() {
-  wdt_disable();
   delay(500);
   Serial.begin(9600);
-  Serial.println(F("TEST 2x DS18B20 v2 (watchdog + reinit), DHCP..."));
+  Serial.println(F("TEST 2xDS18B20 v3 DHCP"));
 
   initEthernet();
 
@@ -133,12 +134,17 @@ void setup() {
   sensors.setResolution(kDsResolution);
 
   printNetInfo();
-  Serial.print(F("DS18B20 count: "));
+  Serial.print(F("  DS:  "));
   Serial.println(sensors.getDeviceCount(), DEC);
-  Serial.println(F("Ready. WDT 8s enabled."));
+
+  extern int __heap_start, *__brkval;
+  int v;
+  int freeRam = (int)&v - (__brkval == 0 ? (int)&__heap_start : (int)__brkval);
+  Serial.print(F("  RAM: "));
+  Serial.println(freeRam);
+  Serial.println(F("OK"));
 
   requestCount = 0;
-  wdt_enable(WDTO_8S);
 }
 
 // ─── Loop ───────────────────────────────────────────────────
@@ -147,12 +153,9 @@ void loop() {
   (void)Ethernet.maintain();
 
   if ((millis() - lastEthReinit) > ETH_REINIT_MS) {
-    Serial.print(F("[reinit eth] uptime="));
-    Serial.print(millis() / 60000UL);
-    Serial.print(F("m reqs="));
+    Serial.print(F("[reinit] r="));
     Serial.println(requestCount);
     initEthernet();
-    printNetInfo();
   }
 
   static char rxBuf[ZBX_RX_BUF_SZ];
